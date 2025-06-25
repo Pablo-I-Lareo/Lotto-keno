@@ -2,10 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-from lightgbm import LGBMRegressor
-from catboost import CatBoostRegressor
+from lightgbm import LGBMClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import accuracy_score
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -16,7 +15,7 @@ st.title("🎯 Predicción de Italia Keno")
 # ---------------------- Carga de datos ---------------------- #
 @st.cache_data
 def cargar_datos():
-    ruta = os.path.join("data", "sorteo_20_unificado.csv")  # Ruta compatible con Linux/Windows
+    ruta = os.path.join("data", "sorteo_20_unificado.csv")
     df = pd.read_csv(ruta)
     df["fecha_hora"] = pd.to_datetime(df["fecha_hora"])
     df["hora"] = df["fecha_hora"].dt.hour * 100 + (df["fecha_hora"].dt.minute // 5) * 5
@@ -24,61 +23,75 @@ def cargar_datos():
 
 df = cargar_datos()
 
-# ---------------------- Selección de franja horaria ---------------------- #
+# ---------------------- Franja horaria ---------------------- #
 st.subheader("🕒 Selecciona franja horaria del sorteo")
 col1, col2 = st.columns(2)
-hora_inicio = col1.time_input("Desde (hora:min)", value=pd.to_datetime("16:00").time())
-hora_fin = col2.time_input("Hasta (hora:min)", value=pd.to_datetime("16:55").time())
+hora_inicio = col1.time_input("Desde", value=pd.to_datetime("16:00").time())
+hora_fin = col2.time_input("Hasta", value=pd.to_datetime("16:55").time())
 
-# Convertimos a códigos de hora de 5 minutos
 inicio_cod = hora_inicio.hour * 100 + (hora_inicio.minute // 5) * 5
 fin_cod = hora_fin.hour * 100 + (hora_fin.minute // 5) * 5
-
 horas_objetivo = list(range(inicio_cod, fin_cod + 1, 5))
 st.info(f"🎯 Predicción para sorteos entre `{inicio_cod}` y `{fin_cod}`")
 
-# ---------------------- Entrenamiento de modelos ---------------------- #
-st.subheader("🔧 Entrenando modelos por número...")
+# ---------------------- Preparación de datos binarios ---------------------- #
+registros = []
+for i in range(len(df)):
+    hora = df.loc[i, "hora"]
+    numeros = df.loc[i, [f"n{j}" for j in range(1, 21)]].values
+    for n in range(1, 91):
+        registros.append({"numero": n, "hora": hora, "salio": int(n in numeros)})
 
-maes = {}
-predicciones = {"n1": [], "n2": [], "n3": []}
-X = df[["hora"]]
+df_bin = pd.DataFrame(registros)
 
-for i in range(1, 4):
-    y = df[f"n{i}"]
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# ---------------------- Entrenamiento del modelo ---------------------- #
+st.subheader("🔧 Entrenando modelo de probabilidad...")
+X = df_bin[["numero", "hora"]]
+y = df_bin["salio"]
 
-    model = CatBoostRegressor(verbose=0) if i <= 13 else LGBMRegressor()
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+model = LGBMClassifier()
+model.fit(X_train, y_train)
 
-    mae = mean_absolute_error(y_test, y_pred)
-    maes[f"n{i}"] = round(mae, 2)
+y_pred = model.predict(X_test)
+acc = accuracy_score(y_test, y_pred)
 
+# ---------------------- Predicción por franja ---------------------- #
+predicciones = {}
+for n in range(1, 91):
+    proba = []
     for h in horas_objetivo:
-        pred = round(model.predict([[h]])[0])
-        predicciones[f"n{i}"].append(pred)
+        prob = model.predict_proba([[n, h]])[0][1]  # Probabilidad de que salga
+        proba.append(prob)
+    predicciones[n] = np.mean(proba)
 
-# ---------------------- Resultados ---------------------- #
-st.subheader("🔮 Predicción del próximo sorteo (media por franja)")
-for i in range(1, 4):
-    valores = predicciones[f"n{i}"]
-    pred_media = int(round(np.mean(valores)))
-    st.markdown(f"**n{i}:** 🎯 `{pred_media}` — MAE: `{maes[f'n{i}']}`")
+# ---------------------- Resultados: Top 3 ---------------------- #
+top_3_pred = sorted(predicciones.items(), key=lambda x: x[1], reverse=True)[:3]
 
-# ---------------------- Gráfica de MAE ---------------------- #
-st.subheader("📉 Error Medio Absoluto (MAE)")
-fig, ax = plt.subplots()
-sns.barplot(x=list(maes.keys()), y=list(maes.values()), palette="Blues_d", ax=ax)
-ax.set_ylabel("MAE")
-ax.set_title("Error Absoluto Medio por Número")
-st.pyplot(fig)
+st.subheader("🔮 Top 3 números más probables")
+for n, prob in top_3_pred:
+    st.markdown(f"🔢 Número `{n}` — Probabilidad estimada: `{prob:.2%}`")
 
-# ---------------------- Números más frecuentes ---------------------- #
-st.subheader("📊 Top 3 números más frecuentes")
-valores = df[[f"n{i}" for i in range(1, 21)]].values.flatten()
-numeros, cuentas = np.unique(valores, return_counts=True)
-top_3 = sorted(zip(numeros, cuentas), key=lambda x: x[1], reverse=True)[:3]
+st.subheader("📈 Precisión del modelo")
+st.metric(label="Accuracy", value=f"{acc:.2%}")
 
-for num, count in top_3:
-    st.write(f"🔹 Número {num}: {count} veces")
+# ---------------------- Gráfico Top 10 ---------------------- #
+st.subheader("📊 Top 10 números más probables")
+top_10 = sorted(predicciones.items(), key=lambda x: x[1], reverse=True)[:10]
+
+fig1, ax1 = plt.subplots()
+sns.barplot(x=[f"{n}" for n, _ in top_10], y=[p for _, p in top_10], ax=ax1)
+ax1.set_ylabel("Probabilidad de salir")
+ax1.set_xlabel("Número")
+ax1.set_title("Top 10 Números con Mayor Probabilidad")
+st.pyplot(fig1)
+
+# ---------------------- Gráfico completo (opcional) ---------------------- #
+with st.expander("📉 Ver probabilidad para todos los números (1-90)"):
+    fig2, ax2 = plt.subplots(figsize=(18, 6))
+    sns.barplot(x=list(predicciones.keys()), y=list(predicciones.values()), ax=ax2)
+    ax2.set_xlabel("Número")
+    ax2.set_ylabel("Probabilidad de salir")
+    ax2.set_title("Probabilidad estimada por número (media en franja)")
+    plt.xticks(rotation=90)
+    st.pyplot(fig2)
