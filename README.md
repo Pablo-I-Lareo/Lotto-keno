@@ -3,7 +3,7 @@
 
 Este repositorio contiene el desarrollo completo de una aplicación de predicción para el juego Italia Keno, que puedes consultar online desde:
 
-🔗 [https://lottokeno.streamlit.app/](https://lottokeno.streamlit.app/)
+🔗 [https://lottokeno20.streamlit.app/](https://lottokeno.streamlit.app/)
 
 ---
 
@@ -61,7 +61,7 @@ Para cada modelo:
 
 ### 5. 📅 App en Streamlit
 
-Interfaz accesible desde [https://lottokeno.streamlit.app/](https://lottokeno20.streamlit.app/):
+Interfaz accesible desde [https://lottokeno20.streamlit.app/](https://lottokeno20.streamlit.app/):
 
 * Permite seleccionar la hora deseada
 * Muestra predicción de los 3 primeros números del sorteo siguiente
