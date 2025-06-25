@@ -15,7 +15,7 @@ st.title("🎯 Predicción de Italia Keno")
 # ---------------------- Carga de datos ---------------------- #
 @st.cache_data
 def cargar_datos():
-    df = pd.read_csv("sorteo_20_unificado.csv")
+    df = pd.read_csv("data\sorteo_20_unificado.csv")
     df["fecha_hora"] = pd.to_datetime(df["fecha_hora"])
     df["hora"] = df["fecha_hora"].dt.hour * 100 + (df["fecha_hora"].dt.minute // 5) * 5
     return df
