@@ -61,7 +61,7 @@ Para cada modelo:
 
 ### 5. 📅 App en Streamlit
 
-Interfaz accesible desde [https://lottokeno.streamlit.app/](https://lottokeno.streamlit.app/):
+Interfaz accesible desde [https://lottokeno.streamlit.app/](https://lottokeno20.streamlit.app/):
 
 * Permite seleccionar la hora deseada
 * Muestra predicción de los 3 primeros números del sorteo siguiente
