@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import os
 from lightgbm import LGBMRegressor
 from catboost import CatBoostRegressor
 from sklearn.model_selection import train_test_split
@@ -15,7 +16,8 @@ st.title("🎯 Predicción de Italia Keno")
 # ---------------------- Carga de datos ---------------------- #
 @st.cache_data
 def cargar_datos():
-    df = pd.read_csv("data\sorteo_20_unificado.csv")
+    ruta = os.path.join("data", "sorteo_20_unificado.csv")  # Ruta compatible con Linux/Windows
+    df = pd.read_csv(ruta)
     df["fecha_hora"] = pd.to_datetime(df["fecha_hora"])
     df["hora"] = df["fecha_hora"].dt.hour * 100 + (df["fecha_hora"].dt.minute // 5) * 5
     return df
