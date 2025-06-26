@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-from lightgbm import LGBMClassifier, LGBMRegressor
+from lightgbm import LGBMClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, mean_absolute_error
 import matplotlib.pyplot as plt
@@ -100,43 +100,40 @@ with st.expander("📉 Ver probabilidad para todos los números (1-90)"):
 st.sidebar.header("🧠 Opciones del modelo")
 activar_prediccion_unica = st.sidebar.checkbox("Mostrar predicción de número único", value=True)
 
-# ---------------------- MODELO DE PREDICCIÓN ÚNICO REVISADO ---------------------- #
+# ---------------------- MODELO DE CLASIFICACIÓN ÚNICA ---------------------- #
 if activar_prediccion_unica:
     st.header("🎯 Predicción de un único número por el modelo")
 
-    # Crear un registro por cada número observado
-    registros_regresion = []
+    # Crear dataset de clasificación: (hora → número observado)
+    registros_clasificacion = []
     for i in range(len(df)):
         hora = df.loc[i, "hora"]
         numeros = df.loc[i, [f"n{j}" for j in range(1, 21)]].values
         for num in numeros:
-            registros_regresion.append({"hora": hora, "numero": num})
+            registros_clasificacion.append({"hora": hora, "numero": num})
 
-    df_uni = pd.DataFrame(registros_regresion)
+    df_cls = pd.DataFrame(registros_clasificacion)
+    X_cls = df_cls[["hora"]]
+    y_cls = df_cls["numero"]
 
-    X_uni = df_uni[["hora"]]
-    y_uni = df_uni["numero"]
+    X_train_c, X_test_c, y_train_c, y_test_c = train_test_split(X_cls, y_cls, test_size=0.2, random_state=42)
 
-    X_train_u, X_test_u, y_train_u, y_test_u = train_test_split(X_uni, y_uni, test_size=0.2, random_state=42)
+    modelo_clasico = LGBMClassifier()
+    modelo_clasico.fit(X_train_c, y_train_c)
 
-    modelo_unico = LGBMRegressor()
-    modelo_unico.fit(X_train_u, y_train_u)
+    y_pred_c = modelo_clasico.predict(X_test_c)
+    mae_c = mean_absolute_error(y_test_c, y_pred_c)
 
-    y_pred_u = modelo_unico.predict(X_test_u)
-    mae_unico = mean_absolute_error(y_test_u, y_pred_u)
-
-    # Predicciones sobre la franja
-    predicciones_franja = [round(modelo_unico.predict([[h]])[0]) for h in horas_objetivo]
+    # Predecir número por cada hora en la franja
+    predicciones_franja = [int(modelo_clasico.predict([[h]])[0]) for h in horas_objetivo]
     numero_final = int(pd.Series(predicciones_franja).mode()[0])
 
     st.success(f"📌 El número único predicho por el modelo es: **{numero_final}**")
     st.caption(f"Basado en {len(horas_objetivo)} predicciones por hora en la franja seleccionada.")
-    st.metric(label="MAE del modelo", value=f"{mae_unico:.2f}")
+    st.metric(label="MAE del modelo (predicción de número exacto)", value=f"{mae_c:.2f}")
 
-    # Distribución de predicciones
     st.subheader("📊 Distribución de predicciones individuales")
     conteo_pred = pd.Series(predicciones_franja).value_counts().sort_values(ascending=False)
-
     fig_pred, ax_pred = plt.subplots()
     sns.barplot(x=conteo_pred.index, y=conteo_pred.values, ax=ax_pred)
     ax_pred.set_xlabel("Número predicho")
