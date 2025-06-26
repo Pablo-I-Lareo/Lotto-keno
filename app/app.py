@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-from lightgbm import LGBMClassifier
+from lightgbm import LGBMClassifier, LGBMRegressor
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, mean_absolute_error
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -44,7 +44,7 @@ for i in range(len(df)):
 
 df_bin = pd.DataFrame(registros)
 
-# ---------------------- Entrenamiento del modelo ---------------------- #
+# ---------------------- Entrenamiento del modelo probabilístico ---------------------- #
 st.subheader("🔧 Entrenando modelo de probabilidad...")
 X = df_bin[["numero", "hora"]]
 y = df_bin["salio"]
@@ -61,7 +61,7 @@ predicciones = {}
 for n in range(1, 91):
     proba = []
     for h in horas_objetivo:
-        prob = model.predict_proba([[n, h]])[0][1]  # Probabilidad de que salga
+        prob = model.predict_proba([[n, h]])[0][1]
         proba.append(prob)
     predicciones[n] = np.mean(proba)
 
@@ -95,3 +95,51 @@ with st.expander("📉 Ver probabilidad para todos los números (1-90)"):
     ax2.set_title("Probabilidad estimada por número (media en franja)")
     plt.xticks(rotation=90)
     st.pyplot(fig2)
+
+# ---------------------- Sidebar: activar predicción única ---------------------- #
+st.sidebar.header("🧠 Opciones del modelo")
+activar_prediccion_unica = st.sidebar.checkbox("Mostrar predicción de número único", value=True)
+
+# ---------------------- MODELO DE PREDICCIÓN ÚNICO REVISADO ---------------------- #
+if activar_prediccion_unica:
+    st.header("🎯 Predicción de un único número por el modelo")
+
+    # Crear un registro por cada número observado
+    registros_regresion = []
+    for i in range(len(df)):
+        hora = df.loc[i, "hora"]
+        numeros = df.loc[i, [f"n{j}" for j in range(1, 21)]].values
+        for num in numeros:
+            registros_regresion.append({"hora": hora, "numero": num})
+
+    df_uni = pd.DataFrame(registros_regresion)
+
+    X_uni = df_uni[["hora"]]
+    y_uni = df_uni["numero"]
+
+    X_train_u, X_test_u, y_train_u, y_test_u = train_test_split(X_uni, y_uni, test_size=0.2, random_state=42)
+
+    modelo_unico = LGBMRegressor()
+    modelo_unico.fit(X_train_u, y_train_u)
+
+    y_pred_u = modelo_unico.predict(X_test_u)
+    mae_unico = mean_absolute_error(y_test_u, y_pred_u)
+
+    # Predicciones sobre la franja
+    predicciones_franja = [round(modelo_unico.predict([[h]])[0]) for h in horas_objetivo]
+    numero_final = int(pd.Series(predicciones_franja).mode()[0])
+
+    st.success(f"📌 El número único predicho por el modelo es: **{numero_final}**")
+    st.caption(f"Basado en {len(horas_objetivo)} predicciones por hora en la franja seleccionada.")
+    st.metric(label="MAE del modelo", value=f"{mae_unico:.2f}")
+
+    # Distribución de predicciones
+    st.subheader("📊 Distribución de predicciones individuales")
+    conteo_pred = pd.Series(predicciones_franja).value_counts().sort_values(ascending=False)
+
+    fig_pred, ax_pred = plt.subplots()
+    sns.barplot(x=conteo_pred.index, y=conteo_pred.values, ax=ax_pred)
+    ax_pred.set_xlabel("Número predicho")
+    ax_pred.set_ylabel("Frecuencia")
+    ax_pred.set_title("Frecuencia por número en la franja horaria")
+    st.pyplot(fig_pred)
