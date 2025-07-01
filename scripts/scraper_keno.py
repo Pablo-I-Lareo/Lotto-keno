@@ -61,7 +61,7 @@ def extraer_filas(pagina):
 extraer_filas(1)
 
 # Ir a páginas 2 y 3
-for pagina in range(2, 4):  # Solo 2 y 3
+for pagina in range(1, 3):  # Solo 2 y 3
     try:
         boton_pagina = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.XPATH, f"//a[@aria-controls='all_results' and text()='{pagina}']"))
