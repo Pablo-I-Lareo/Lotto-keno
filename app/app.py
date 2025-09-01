@@ -10,19 +10,38 @@ import seaborn as sns
 st.set_page_config(page_title="Italia Keno - Modelos ML", layout="centered")
 st.title("🎯 Italia Keno - Comparador de Modelos")
 
+# ──────────────────────────────────────────────────────────────
+# 📂 Cargar datos
+# ──────────────────────────────────────────────────────────────
 @st.cache_data
 def cargar_datos():
     df = pd.read_csv("sorteo_20_limpio.csv")
-    df["fecha_hora"] = pd.to_datetime(df["fecha_hora"])
+
+    # Reconstruir fecha_hora si no existe
+    if "fecha_hora" not in df.columns and {"fecha", "hora_str"}.issubset(df.columns):
+        df["fecha_hora"] = pd.to_datetime(
+            df["fecha"].astype(str) + " " + df["hora_str"].astype(str),
+            dayfirst=True,
+            errors="coerce"
+        )
+    else:
+        df["fecha_hora"] = pd.to_datetime(df["fecha_hora"], errors="coerce")
+
+    # Crear columna 'hora' codificada (ej: 1600, 1605, etc.)
     df["hora"] = df["fecha_hora"].dt.hour * 100 + (df["fecha_hora"].dt.minute // 5) * 5
+
     return df
 
 df = cargar_datos()
 
-# Elección de modelo
+# ──────────────────────────────────────────────────────────────
+# 🔧 Selección de modelo
+# ──────────────────────────────────────────────────────────────
 modo = st.selectbox("🔍 Selecciona tipo de modelo", ["Clasificación por número", "Regresión por número"])
 
-# Selección de franja horaria visible
+# ──────────────────────────────────────────────────────────────
+# 🕒 Filtro por franja horaria
+# ──────────────────────────────────────────────────────────────
 st.subheader("🕒 Selecciona franja horaria")
 col1, col2 = st.columns(2)
 hora_inicio = col1.time_input("Desde", value=pd.to_datetime("16:00").time())
@@ -32,16 +51,22 @@ inicio_cod = hora_inicio.hour * 100 + (hora_inicio.minute // 5) * 5
 fin_cod = hora_fin.hour * 100 + (hora_fin.minute // 5) * 5
 horas_objetivo = list(range(inicio_cod, fin_cod + 1, 5))
 
+# ──────────────────────────────────────────────────────────────
+# 📊 Modelos
+# ──────────────────────────────────────────────────────────────
 if not horas_objetivo:
     st.error("⚠️ Franja horaria inválida. Asegúrate de que la hora final sea posterior a la hora de inicio.")
+
 else:
     if modo == "Clasificación por número":
         st.subheader("🔢 Top 10 números más predecibles por hora")
         clasificacion_resultados = []
 
         for numero in range(1, 91):
+            # y = 1 si el número salió en el sorteo, 0 si no
             y = df[[f"n{i}" for i in range(1, 21)]].apply(lambda row: int(numero in row.values), axis=1)
             X = df[["hora"]]
+
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
             model = LGBMClassifier()
@@ -55,7 +80,7 @@ else:
             clasificacion_resultados.append((numero, acc, media_proba))
 
         top_10 = sorted(clasificacion_resultados, key=lambda x: x[2], reverse=True)[:10]
-        df_top10 = pd.DataFrame([(n, a, p) for n, a, p in top_10], columns=["Número", "Precisión", "Probabilidad"])
+        df_top10 = pd.DataFrame(top_10, columns=["Número", "Precisión", "Probabilidad"])
         st.dataframe(df_top10)
 
         st.subheader("📊 Gráfico de Probabilidad")
@@ -69,9 +94,8 @@ else:
     else:
         st.subheader("📌 Modelo de Regresión basado en todos los números (n1 a n20)")
 
-        # Expandir dataset para entrenar sobre todos los números
         registros = []
-        for i, row in df.iterrows():
+        for _, row in df.iterrows():
             for j in range(1, 21):
                 registros.append({"hora": row["hora"], "numero": row[f"n{j}"]})
         df_reg = pd.DataFrame(registros)
@@ -102,3 +126,44 @@ else:
             st.pyplot(fig2)
         else:
             st.warning("⚠️ No se pudieron generar predicciones para la franja horaria seleccionada.")
+
+# ──────────────────────────────────────────────────────────────
+# 📊 Métricas globales de rendimiento
+# ──────────────────────────────────────────────────────────────
+st.subheader("📈 Métricas globales del modelo")
+
+# Accuracy medio de clasificación
+accuracies = []
+for numero in range(1, 91):
+    y = df[[f"n{i}" for i in range(1, 21)]].apply(lambda row: int(numero in row.values), axis=1)
+    X = df[["hora"]]
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+    model = LGBMClassifier()
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    acc = accuracy_score(y_test, y_pred)
+    accuracies.append(acc)
+
+mean_acc = np.mean(accuracies)
+
+# MAE global de la regresión
+registros = []
+for _, row in df.iterrows():
+    for j in range(1, 21):
+        registros.append({"hora": row["hora"], "numero": row[f"n{j}"]})
+df_reg = pd.DataFrame(registros)
+
+X = df_reg[["hora"]]
+y = df_reg["numero"]
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+model_reg = LGBMRegressor()
+model_reg.fit(X_train, y_train)
+y_pred = model_reg.predict(X_test)
+mae_global = mean_absolute_error(y_test, y_pred)
+
+# Mostrar resultados
+col1, col2 = st.columns(2)
+col1.metric("📊 Accuracy medio (clasificación)", f"{mean_acc:.3f}")
+col2.metric("📊 MAE global (regresión)", f"{mae_global:.2f}")
